@@ -1,0 +1,15 @@
+({
+    handleAuraMethod: function(component, event, helper) {
+        /*var childCmp = component.find("child");
+       	call the aura:method in the child component
+        console.log("hey hi hello 1 ..")
+        var body = component.get("v.body");
+        console.log("body :" + body);
+        childCmp.deleteOrgUnit(component, event, helper);
+        console.log("hey hi hello 2 ..")*/
+        event.stopPropagation();
+        var primaryClicked = component.getEvent('strike_evt_modalPrimaryButtonClicked');
+        primaryClicked.fire();
+        component.set("v.showDeleteModal", false);
+    },
+})

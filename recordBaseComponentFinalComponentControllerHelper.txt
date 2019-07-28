@@ -1,0 +1,302 @@
+({
+    fireAppEvent: function(component, helper, action, payload) {
+        helper.log(component, action, payload, 'fireAppEvent START');
+        var canFire = _.find(component.get('v.canFireAppActions'), function(a) {
+            return a === action;
+        });
+        if ($A.util.isEmpty(action) || $A.util.isEmpty(canFire)) return;
+        var appEvent = $A.get('e.c:interactionAppEvent');
+        appEvent.setParams({
+            action: action,
+            payload: payload || null
+        });
+        appEvent.fire();
+        helper.log(component, 'fireAppEvent END');
+    },
+
+    fireCompEvent: function(component, helper, action, payload) {
+        var canFire = _.find(component.get('v.canFireCompActions'), function(a) {
+            return a === action;
+        });
+        if ($A.util.isEmpty(action) || $A.util.isEmpty(canFire)) return;
+
+        if (action === 'COMP_VALID')
+            payload['componentIndex'] = component.get('v.componentIndex');
+        if (action == 'SHOW_DELETE_MODAL')
+            component.set("v.showDeleteModal", true);
+        helper.log(component, action, payload, 'fireCompEvent START');
+        var compEvent = component.getEvent('interactionCompEvent');
+        compEvent.setParams({
+            action: action,
+            payload: payload || null
+        });
+        compEvent.fire();
+        helper.log(component, action, payload, 'fireCompEvent END');
+    },
+
+    getRules: function(component, helper, callback) {
+        var service = component.find('interactionService');
+        var interactionId = component.get('v.interactionId');
+        var requiredRuleCategories = component.get('v.ruleCategories');
+        var existingRuleCategories = component.get('v.existingRuleCategories');
+        var queryRuleCategories = _.difference(requiredRuleCategories, existingRuleCategories);
+
+        if (queryRuleCategories.length === 0) {
+            callback(component, helper);
+            return;
+        }
+
+        var request = {
+            data: {
+                ruleCategories: queryRuleCategories,
+                interactionId: interactionId
+            },
+            meta: {
+                options: {
+                    cacheResults: true,
+                    ignoreCached: true
+                }
+            }
+        };
+        service.getInteractionRules(request, function(response) {
+            if (!response.success) {
+                helper.showToastMessages(response.messages);
+                return;
+            }
+            var rules = response.data.rules;
+            var setState = [];
+            var mapStateToAttributes = component.get('v.mapStateToAttributes');
+            existingRuleCategories = component.get('v.existingRuleCategories') || [];
+            _.forEach(rules, function(value, key) {
+                var path = 'meta.rules.' + key;
+                existingRuleCategories.push(key);
+                setState.push({
+                    path: path,
+                    value: value
+                });
+                var attribute = _.find(mapStateToAttributes, {
+                    path: path
+                });
+                if ($A.util.isEmpty(attribute))
+                    return;
+                component.set('v.' + attribute.name, value);
+            });
+
+            if (!$A.util.isEmpty(callback))
+                callback(component, helper);
+
+            existingRuleCategories = _.uniq(existingRuleCategories);
+            setState.push({
+                path: 'meta.existingRuleCategories',
+                value: existingRuleCategories
+            });
+            helper.setState(component, helper, setState);
+
+        });
+    },
+
+    getBudgetRules: function(component, helper, budgetRuleRequest, responseAttribute, callback) {
+        var request = {
+            meta: {
+                options: {
+                    cacheResults: true
+                }
+            },
+            data: {
+                budgetId: budgetRuleRequest.budgetId,
+                ruleCategories: budgetRuleRequest.ruleCategories
+            }
+        };
+        var service = component.find('budgetService');
+        service.getBudgetRules(request, function(response) {
+            if (!response.success) {
+                helper.showToastMessages(response.messages);
+                return;
+            }
+            component.set('v.' + responseAttribute, _.get(response, 'data.rules'));
+            callback(component, helper);
+        });
+    },
+
+    getSearchSettings: function(component, helper, attributeName, callback) {
+        var request = {
+            meta: {
+                options: {
+                    cacheResults: true
+                }
+            }
+        };
+
+        var service = component.find('applicationSettingsService');
+        service.getSearchSettings(request, function(response) {
+            if (!response.success) {
+                helper.showToastMessages(response.messages);
+                return;
+            }
+            component.set('v.' + attributeName, response.data);
+
+            if (!$A.util.isEmpty(callback))
+                callback(component, helper);
+            /*
+                  helper.setState(component, helper, [
+                    {
+                      path: 'settings.searchSettings',
+                      value: response.data
+                    }
+                  ]);*/
+        });
+    },
+
+    getLabels: function(component, helper, objectFieldJSON, attributesWithPath, callback) {
+
+        var request = {
+            meta: {
+                options: {
+                    cacheResults: true,
+                    runInForeground: true
+                }
+            },
+            data: {
+                objects: objectFieldJSON
+            }
+        };
+
+        var service = component.find('objectMetadataService');
+        service.getFieldLabelsForObjects(request, function(response) {
+            if (!response.success) {
+                helper.showToastMessages(response.messages);
+                return;
+            }
+            _.forEach(attributesWithPath, function(attribute) {
+                component.set('v.' + attribute.name, _.find(response.data.objects, attribute.path).fieldLabels);
+            });
+
+            if (!$A.util.isEmpty(callback))
+                callback(component, helper);
+
+        });
+    },
+
+    setState: function(component, helper, items) {
+        helper.fireCompEvent(component, helper, 'SET_STATE', items);
+    },
+
+    showError: function(component, helper, message) {
+        message = $A.util.isEmpty(message) ?
+            'Unable to get the Business Rules' :
+            message;
+        component.set('v.error', message);
+        component.set('v.isLoading', false);
+    },
+
+    log: function() {
+        if ($A.util.isEmpty(window['ahm']['log'])) return;
+        var args = Array.prototype.slice.call(arguments);
+        var obj = this.getLogComponentObj(args.shift());
+        var evt = this.getLogEventObj(args.shift());
+        ahm.log(obj, evt, args);
+    },
+
+    showToastMessages: function(messages) {
+        if (
+            $A.util.isEmpty(messages) ||
+            ($A.util.isArray(messages) && messages.length === 0)
+        )
+            return;
+
+        _.forEach(messages, function(msg) {
+            if ($A.util.isEmpty(msg.type) && $A.util.isEmpty(msg.message)) return;
+            if ($A.util.isEmpty(msg.type) && !$A.util.isEmpty(msg.message))
+                msg.type = 'error';
+
+            var mode = msg.type.toLowerCase() === 'error' ? 'sticky' : 'dismissible';
+            var toastEvent = $A.get('e.force:showToast');
+            var msgType = msg.type.toLowerCase();
+
+            if (msgType === 'success') {
+                msgType = $A.get("$Label.c.SUCCESS");
+            } else if (msgType === 'warning') {
+                msgType = $A.get("$Label.c.WARNING_LBL");
+            } else if (msgType === 'error') {
+                msgType = $A.get("$Label.c.ERR_LBL_ERR");
+            } else if (msgType === 'info') {
+                msgType = $A.get("$Label.c.INFO_LBL");
+            } else {
+                msgType = msg.type;
+            }
+
+            toastEvent.setParams({
+                title: msgType + '!',
+                type: msg.type.toLowerCase(),
+                message: msg.message,
+                mode: mode
+            });
+            toastEvent.fire();
+        });
+    },
+
+    getLogComponentObj: function(component) {
+        var toString = component.toString();
+        if ($A.util.isEmpty(toString)) ahm.log(args);
+        var strArray = toString.split(' ');
+        if (strArray.length === 0) ahm.log(args);
+
+        var componentNameWithNamespace = _.find(strArray, function(str) {
+            return str.indexOf('markup://') >= 0;
+        });
+        if ($A.util.isEmpty(componentNameWithNamespace)) ahm.log(args);
+        var comps = componentNameWithNamespace.split(':');
+        if (comps.length !== 3) ahm.log(args);
+        var namespace = comps[1].substring(2);
+        var componentName = comps[2];
+        // var componentType = 'Business';
+        // var firstChar = componentName.charAt(0);
+        // if (firstChar === firstChar.toLowerCase() && firstChar !== firstChar.toUpperCase()) {
+        //   componentType = 'Technical';
+        // } else if (firstChar === firstChar.toUpperCase() && firstChar !== firstChar.toLowerCase() && componentName.indexOf('Service') >= 0) {
+        //   componentType = 'Service';
+        // } else if (firstChar === firstChar.toUpperCase() && firstChar !== firstChar.toLowerCase() && componentName.indexOf('Container') >= 0) {
+        //   componentType = 'Container';
+        // } else if (firstChar === firstChar.toUpperCase() && firstChar !== firstChar.toLowerCase() && componentName.indexOf('Background') >= 0) {
+        //   componentType = 'Background';
+        // } else if (firstChar === firstChar.toUpperCase() && firstChar !== firstChar.toLowerCase() && componentName.indexOf('Resource') >= 0) {
+        //   componentType = 'Resource';
+        // }
+
+        // return {namespace: namespace, componentName: componentName, componentType: componentType};
+        return {
+            namespace: namespace,
+            componentName: componentName
+        };
+    },
+
+    getLogEventObj: function(event) {
+        if (event && event['getParam'] && event.getParam('action'))
+            return {
+                action: event.getParam('action'),
+                payload: event.getParam('payload')
+            };
+
+        return null;
+    },
+
+    setIsAppPage: function(component, helper) {
+        if (window.location.href.includes('.app')) {
+            component.set('v.isAppPage', true);
+        }
+    },
+
+    getPicklistLabel: function(picklistOptions, selectedFieldValue) {
+        if ($A.util.isEmpty(picklistOptions) || $A.util.isEmpty(selectedFieldValue)) {
+            return selectedFieldValue;
+        }
+        var selectedOption = {};
+        selectedOption = _.find(picklistOptions, function(option) {
+            return option.value == selectedFieldValue;
+        });
+        if ($A.util.isEmpty(selectedOption)) {
+            return;
+        }
+        return selectedOption.label;
+    },
+})

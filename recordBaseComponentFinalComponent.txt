@@ -1,0 +1,38 @@
+<aura:component extensible="true" access="global">
+    <aura:attribute name="isAppPage" type="Boolean" default="false" access="global" />
+
+    <aura:attribute name="canFireCompActions" type="String[]" default="['SET_STATE', 'SUBSCRIBE_TO_CHANGE']" access="global" />
+    <aura:attribute name="isLoading" type="Boolean" default="true" />
+    <aura:attribute name="showDeleteModal" type="Boolean" default="false" />
+
+    <!-- REGISTERED EVENTS -->
+    <aura:registerEvent name="strike_evt_modalPrimaryButtonClicked" type="c:strike_evt"/>
+    <aura:registerEvent name="interactionCompEvent" type="c:interactionCompEvent" description="'SET_STATE', 'SUBSCRIBE_TO_CHANGE'" />
+    <!-- REGISTERED EVENTS END -->
+
+    <!-- HANDLERS -->
+    <aura:handler name="strike_evt_modalPrimaryButtonClicked" event="c:strike_evt" action="{!c.handleAuraMethod}" description="Handle delete org unit action" />
+    <!-- HANDLERS -->
+    <!-- SERVICES COMPONENTS -->
+    <c:ObjectMetaDataService aura:id="objectMetadataService" />
+    <!-- SERVICES COMPONENTS END -->
+
+    <div>
+        <aura:iteration items="{!v.body}" var="item">
+            <span> {!item} </span>
+        </aura:iteration>
+
+        <aura:if isTrue="{!v.showDeleteModal}">
+            <c:strike_modal aura:id="strikeModal" title="{!$Label.c.VF_Label_Delete}" secondaryButtonLabel="{!$Label.c.Cancel_Button}" primaryButtonLabel="{!$Label.c.VF_Label_Delete}" showHeader="true" showFooter="true" showModal="{!v.showDeleteModal}" showCrossButton="false">
+                <div class="modal-body">
+                    <div class="slds-text-align_center">
+                        <c:icon iconName="utility:delete" size="medium" class="ahm-DeleteIconBackgroundColor" />
+                        <div class="slds-p-top_small">
+                            {! $Label.c.FM_MESSAGE_CONFIRMATION_TEXT_REMOVE_MESSAGE}
+                        </div>
+                    </div>
+                </div>
+            </c:strike_modal>
+        </aura:if>
+    </div>
+</aura:component>
